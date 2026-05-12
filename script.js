@@ -14,7 +14,6 @@
 	if (!cd || !cdCaseButton || !audio || !trackTitle || !trackArtist || !timeDisplay || !songList || !prevBtn || !playPauseBtn || !nextBtn || !playPauseIcon) return;
 
 	const tracks = [
-		'Brothers - Kanye West - SoundLoadMate.com.mp3',
 		'Brothers_V10.mp3',
 		'CyHi_Model_V9.mp3',
 		'Ever_Bryan.mp3',
@@ -242,7 +241,7 @@
 			btn.addEventListener('click', () => {
 				loadTrack(index);
 				setActiveSongListItem(index);
-				if (isPlaying) void playAudio();
+				setPlaying(true);
 			});
 
 			const url = encodeURI(`music/${file}`);

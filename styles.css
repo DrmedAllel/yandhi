@@ -36,7 +36,7 @@ header, h1 {
     margin: 0;
     padding: 0em;
     padding-top: 0.5em;
-    font-size: 1rem;
+    font-size: 0.8rem;
     user-select: none;
     font-weight: 300;
 }
@@ -139,6 +139,11 @@ main {
     display: flex;
     align-items: center;
     gap: 12px;
+    padding: 0.5rem;
+}
+
+.songlist_row:hover {
+    background-color: #f0f0f0;
 }
 
 .songlist_item_btn {
@@ -234,4 +239,27 @@ main {
     z-index: 0;
     width: 200px;
     height: auto;
+}
+
+footer {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    text-align: center;
+    padding-bottom: 0.5em;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    color: #888;
+    font-size: 0.8rem;
+    user-select: none;
+}
+
+footer a {
+    color: inherit;
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
 }
