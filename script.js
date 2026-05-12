@@ -14,10 +14,10 @@
 	if (!cd || !cdCaseButton || !audio || !trackTitle || !trackArtist || !timeDisplay || !songList || !prevBtn || !playPauseBtn || !nextBtn || !playPauseIcon) return;
 
 	const tracks = [
+        'Hurricane_V22.mp3',
 		'Brothers_V10.mp3',
 		'CyHi_Model_V9.mp3',
 		'Ever_Bryan.mp3',
-		'Hurricane_V22.mp3',
 		'Last_Name_V9.mp3',
 		'New_Body_V19.mp3',
 		'Sky_City_V19.mp3',
