@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Yandhi</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+        <link rel="stylesheet" href="styles.css">
+        <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js" defer></script>
+        <script src="script.js" defer></script>
+    </head>
+    <body>
+        <header>
+            <h1>Yandhi by Kanye West</h1>
+        </header>
+        <main>
+            <div class="mini_disc_player">
+                <button id="cdCaseButton" class="cd_case_container" type="button" aria-pressed="false" aria-label="CD starten oder stoppen">
+                    <img class="cd_case" src="img/cd_case.png" alt="CD-Hülle">
+                    <div class="cd_container">
+                        <img id="cd" src="img/cd.png" alt="CD">
+                    </div>
+                </button>
+
+                <div class="audio_player" aria-label="MP3 Player">
+                    <div id="trackTitle" class="track_title">&nbsp;</div>
+                    <div id="trackArtist" class="track_artist">&nbsp;</div>
+                    <div id="timeDisplay" class="time_display">0:00 / 0:00</div>
+                    <div class="controls">
+                        <button id="prevBtn" class="control_btn" type="button" aria-label="Zurück">
+                            <i class="fa-solid fa-backward-step" aria-hidden="true"></i>
+                        </button>
+                        <button id="playPauseBtn" class="control_btn" type="button" aria-label="Play/Pause">
+                            <i id="playPauseIcon" class="fa-solid fa-play" aria-hidden="true"></i>
+                        </button>
+                        <button id="nextBtn" class="control_btn" type="button" aria-label="Weiter">
+                            <i class="fa-solid fa-forward-step" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <audio id="audio" preload="metadata"></audio>
+
+                    <details class="songlist">
+                        <summary class="songlist_summary">Tracklist</summary>
+                        <div class="songlist_container">
+                            <ul id="songList" class="songlist_items"></ul>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </main>
+    </body>
+</html>

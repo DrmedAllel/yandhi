@@ -1,0 +1,397 @@
+(() => {
+	const cd = document.getElementById('cd');
+	const cdCaseButton = document.getElementById('cdCaseButton');
+	const audio = document.getElementById('audio');
+	const trackTitle = document.getElementById('trackTitle');
+	const trackArtist = document.getElementById('trackArtist');
+	const timeDisplay = document.getElementById('timeDisplay');
+	const songList = document.getElementById('songList');
+	const prevBtn = document.getElementById('prevBtn');
+	const playPauseBtn = document.getElementById('playPauseBtn');
+	const nextBtn = document.getElementById('nextBtn');
+	const playPauseIcon = document.getElementById('playPauseIcon');
+
+	if (!cd || !cdCaseButton || !audio || !trackTitle || !trackArtist || !timeDisplay || !songList || !prevBtn || !playPauseBtn || !nextBtn || !playPauseIcon) return;
+
+	const tracks = [
+		'Brothers - Kanye West - SoundLoadMate.com.mp3',
+		'Brothers_V10.mp3',
+		'CyHi_Model_V9.mp3',
+		'Ever_Bryan.mp3',
+		'Hurricane_V22.mp3',
+		'Last_Name_V9.mp3',
+		'New_Body_V19.mp3',
+		'Sky_City_V19.mp3',
+		'The_Chakra_V9.mp3',
+		'The_Garden_V6.mp3',
+		'We_Free.mp3',
+		'We_Got_Love_V10.mp3',
+		'XXX_The_Storm_V15.mp3',
+	];
+
+	let currentTrackIndex = 0;
+
+	// Tunables
+	const maxOmegaDegPerSec = 5200; // max speed
+	const accelTimeSec = 3.5;      // time to reach max speed
+	const decelTimeSec = 3.5;      // time to stop from max speed
+
+	const accelDegPerSec2 = maxOmegaDegPerSec / accelTimeSec;
+	const decelDegPerSec2 = maxOmegaDegPerSec / decelTimeSec;
+
+	let isPlaying = false;
+	let angleDeg = 0;
+	let omegaDegPerSec = 0;
+	let targetOmegaDegPerSec = 0;
+
+	let rafId = null;
+	let lastTs = null;
+
+	const formatTime = (seconds) => {
+		if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+		const s = Math.floor(seconds);
+		const m = Math.floor(s / 60);
+		const r = s % 60;
+		return `${m}:${String(r).padStart(2, '0')}`;
+	};
+
+	const updateTimeUI = () => {
+		const cur = formatTime(audio.currentTime);
+		const dur = formatTime(audio.duration);
+		timeDisplay.textContent = `${cur} / ${dur}`;
+	};
+
+	const updatePlayIcon = () => {
+		playPauseIcon.className = isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+	};
+
+	const formatTitle = (filename) => {
+		const withoutExt = filename.replace(/\.mp3$/i, '');
+		return withoutExt.replaceAll('_', ' ').trim();
+	};
+
+	let titleRequestId = 0;
+	let titleAbortController = null;
+	let titleFallbackTimer = null;
+	const setTitleText = (title) => {
+		const trimmed = title?.trim();
+		trackTitle.textContent = trimmed || '\u00A0';
+	};
+	const setArtistText = (artist) => {
+		const trimmed = artist?.trim();
+		trackArtist.textContent = trimmed || '\u00A0';
+	};
+
+	const updateMediaSessionMetadata = (title, artist) => {
+		if (!('mediaSession' in navigator)) return;
+		try {
+			navigator.mediaSession.metadata = new MediaMetadata({
+				title: title || '',
+				artist: artist || '',
+			});
+		} catch {
+			// Ignore unsupported contexts.
+		}
+	};
+
+	const updateTitleFromMetadata = (url, fallbackFilename) => {
+		const fallback = formatTitle(fallbackFilename);
+		const reqId = ++titleRequestId;
+
+		titleAbortController?.abort();
+		if (titleFallbackTimer) clearTimeout(titleFallbackTimer);
+
+		setTitleText('...');
+		setArtistText('');
+		updateMediaSessionMetadata('', '');
+
+		titleFallbackTimer = setTimeout(() => {
+			if (reqId !== titleRequestId) return;
+			const current = trackTitle.textContent?.trim();
+			if (!current || current === '...') {
+				setTitleText(fallback);
+				updateMediaSessionMetadata(fallback, trackArtist.textContent?.trim() || '');
+			}
+		}, 3000);
+
+		const jsmediatags = globalThis.jsmediatags;
+		if (!jsmediatags || typeof jsmediatags.Reader !== 'function') return;
+
+		const controller = new AbortController();
+		titleAbortController = controller;
+
+		(async () => {
+			try {
+				const response = await fetch(url, { signal: controller.signal });
+				if (!response.ok) return;
+				const blob = await response.blob();
+				if (controller.signal.aborted || reqId !== titleRequestId) return;
+
+				const result = await new Promise((resolve, reject) => {
+					try {
+						new jsmediatags.Reader(blob).read({
+							onSuccess: resolve,
+							onError: reject,
+						});
+					} catch (e) {
+						reject(e);
+					}
+				});
+
+				if (controller.signal.aborted || reqId !== titleRequestId) return;
+				const tags = result?.tags;
+				const title = tags?.title?.trim() || '';
+				const artist = tags?.artist?.trim() || '';
+				if (artist) setArtistText(artist);
+				if (title) {
+					setTitleText(title);
+					updateMediaSessionMetadata(title, artist);
+				} else {
+					// Keep showing '...' until the 1s fallback triggers.
+					updateMediaSessionMetadata('', artist);
+				}
+			} catch {
+				// Fetch/read may be blocked (e.g. file://) or aborted; keep fallback.
+			}
+		})();
+	};
+
+	const setActiveSongListItem = (activeIndex) => {
+		const buttons = songList.querySelectorAll('button[data-index]');
+		buttons.forEach((btn) => {
+			const idx = Number(btn.dataset.index);
+			btn.setAttribute('aria-current', String(idx === activeIndex));
+		});
+	};
+
+	const updateSongListItemFromMetadata = (index, url, fallbackFilename) => {
+		const button = songList.querySelector(`button[data-index="${index}"]`);
+		if (!button) return;
+		const titleEl = button.querySelector('[data-role="title"]');
+		const artistEl = button.querySelector('[data-role="artist"]');
+		if (!titleEl || !artistEl) return;
+
+		const fallback = formatTitle(fallbackFilename);
+		titleEl.textContent = '...';
+		artistEl.textContent = '';
+		const fallbackTimer = setTimeout(() => {
+			if (titleEl.textContent?.trim() === '...') {
+				titleEl.textContent = fallback;
+			}
+		}, 1000);
+
+		const jsmediatags = globalThis.jsmediatags;
+		if (!jsmediatags || typeof jsmediatags.Reader !== 'function') return;
+
+		(async () => {
+			try {
+				const response = await fetch(url);
+				if (!response.ok) return;
+				const blob = await response.blob();
+
+				const result = await new Promise((resolve, reject) => {
+					try {
+						new jsmediatags.Reader(blob).read({
+							onSuccess: resolve,
+							onError: reject,
+						});
+					} catch (e) {
+						reject(e);
+					}
+				});
+
+				const tags = result?.tags;
+				const title = tags?.title?.trim() || '';
+				const artist = tags?.artist?.trim() || '';
+				if (artist) artistEl.textContent = artist;
+				if (title) {
+					clearTimeout(fallbackTimer);
+					titleEl.textContent = title;
+				}
+			} catch {
+				// Ignore; keep fallback.
+			}
+		})();
+	};
+
+	const buildSongList = () => {
+		songList.innerHTML = '';
+		tracks.forEach((file, index) => {
+			const li = document.createElement('li');
+			const row = document.createElement('div');
+			row.className = 'songlist_row';
+
+			const btn = document.createElement('button');
+			btn.type = 'button';
+			btn.className = 'songlist_item_btn';
+			btn.dataset.index = String(index);
+			btn.setAttribute('aria-current', 'false');
+			btn.setAttribute('aria-label', `Song abspielen: ${formatTitle(file)}`);
+
+			const title = document.createElement('div');
+			title.dataset.role = 'title';
+			title.textContent = '...';
+
+			const meta = document.createElement('div');
+			meta.className = 'songlist_item_meta';
+			meta.dataset.role = 'artist';
+			meta.textContent = '';
+
+			btn.appendChild(title);
+			btn.appendChild(meta);
+			btn.addEventListener('click', () => {
+				loadTrack(index);
+				setActiveSongListItem(index);
+				if (isPlaying) void playAudio();
+			});
+
+			const url = encodeURI(`music/${file}`);
+			const downloadLink = document.createElement('a');
+			downloadLink.className = 'songlist_download_btn';
+			downloadLink.href = url;
+			downloadLink.setAttribute('download', file);
+			downloadLink.setAttribute('aria-label', `Download: ${formatTitle(file)}`);
+			downloadLink.addEventListener('click', (e) => {
+				// Don't trigger play when downloading.
+				e.stopPropagation();
+			});
+			const downloadIcon = document.createElement('i');
+			downloadIcon.className = 'fa-solid fa-file-arrow-down';
+			downloadIcon.setAttribute('aria-hidden', 'true');
+			downloadLink.appendChild(downloadIcon);
+
+			row.appendChild(btn);
+			row.appendChild(downloadLink);
+			li.appendChild(row);
+			songList.appendChild(li);
+
+			updateSongListItemFromMetadata(index, url, file);
+		});
+		setActiveSongListItem(currentTrackIndex);
+	};
+
+	const loadTrack = (index) => {
+		currentTrackIndex = (index + tracks.length) % tracks.length;
+		const file = tracks[currentTrackIndex];
+		const url = encodeURI(`music/${file}`);
+		audio.src = url;
+		audio.load();
+		updateTitleFromMetadata(url, file);
+		setActiveSongListItem(currentTrackIndex);
+		updateTimeUI();
+	};
+
+	const playAudio = async () => {
+		try {
+			await audio.play();
+		} catch {
+			// Autoplay/gesture restrictions or decoding errors: keep UI consistent without throwing.
+		}
+	};
+
+	const syncFromAudioState = (playing) => {
+		isPlaying = playing;
+		targetOmegaDegPerSec = isPlaying ? maxOmegaDegPerSec : 0;
+		cdCaseButton.setAttribute('aria-pressed', String(isPlaying));
+		updatePlayIcon();
+
+		if (rafId === null) {
+			lastTs = null;
+			rafId = requestAnimationFrame(step);
+		}
+	};
+
+	const setPlaying = (nextIsPlaying) => {
+		isPlaying = nextIsPlaying;
+		targetOmegaDegPerSec = isPlaying ? maxOmegaDegPerSec : 0;
+		cdCaseButton.setAttribute('aria-pressed', String(isPlaying));
+		updatePlayIcon();
+
+		if (isPlaying) {
+			void playAudio();
+		} else {
+			audio.pause();
+		}
+
+		if (rafId === null) {
+			lastTs = null;
+			rafId = requestAnimationFrame(step);
+		}
+	};
+
+	const toggle = () => setPlaying(!isPlaying);
+
+	const step = (ts) => {
+		if (lastTs === null) lastTs = ts;
+		const dt = Math.min((ts - lastTs) / 1000, 0.05);
+		lastTs = ts;
+
+		const delta = targetOmegaDegPerSec - omegaDegPerSec;
+		const rate = delta > 0 ? accelDegPerSec2 : decelDegPerSec2;
+		const maxStep = rate * dt;
+
+		if (Math.abs(delta) <= maxStep) {
+			omegaDegPerSec = targetOmegaDegPerSec;
+		} else {
+			omegaDegPerSec += Math.sign(delta) * maxStep;
+		}
+
+		angleDeg = (angleDeg + omegaDegPerSec * dt) % 360;
+		cd.style.transform = `rotate(${angleDeg}deg)`;
+
+		const shouldContinue = isPlaying || omegaDegPerSec > 0.05;
+		if (shouldContinue) {
+			rafId = requestAnimationFrame(step);
+		} else {
+			omegaDegPerSec = 0;
+			rafId = null;
+			lastTs = null;
+		}
+	};
+
+	const nextTrack = () => {
+		loadTrack(currentTrackIndex + 1);
+		if (isPlaying) void playAudio();
+	};
+
+	const prevTrack = () => {
+		loadTrack(currentTrackIndex - 1);
+		if (isPlaying) void playAudio();
+	};
+
+	cdCaseButton.addEventListener('click', toggle);
+	playPauseBtn.addEventListener('click', toggle);
+	prevBtn.addEventListener('click', () => prevTrack());
+	nextBtn.addEventListener('click', () => nextTrack());
+
+	audio.addEventListener('loadedmetadata', updateTimeUI);
+	audio.addEventListener('timeupdate', updateTimeUI);
+	audio.addEventListener('play', () => syncFromAudioState(true));
+	audio.addEventListener('playing', () => syncFromAudioState(true));
+	audio.addEventListener('pause', () => {
+		// When a track ends, browsers may also emit 'pause'.
+		if (audio.ended) return;
+		syncFromAudioState(false);
+	});
+	audio.addEventListener('ended', () => {
+		if (!tracks.length) return;
+		// Keep the player in "playing" state across track boundaries.
+		syncFromAudioState(true);
+		nextTrack();
+	});
+
+	if ('mediaSession' in navigator) {
+		try {
+			navigator.mediaSession.setActionHandler('play', () => setPlaying(true));
+			navigator.mediaSession.setActionHandler('pause', () => setPlaying(false));
+			navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
+			navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+		} catch {
+			// Ignore if the browser blocks handlers in this context.
+		}
+	}
+
+	buildSongList();
+	loadTrack(0);
+	updatePlayIcon();
+})();
