@@ -72,9 +72,87 @@
 	let titleRequestId = 0;
 	let titleAbortController = null;
 	let titleFallbackTimer = null;
+	let marqueeUpdateRaf = null;
+	let titleMeasureEl = null;
+	let currentTitleValue = '\u00A0';
+
+	const getTitleMeasureEl = () => {
+		if (titleMeasureEl) return titleMeasureEl;
+		titleMeasureEl = document.createElement('span');
+		titleMeasureEl.style.position = 'absolute';
+		titleMeasureEl.style.left = '-99999px';
+		titleMeasureEl.style.top = '0';
+		titleMeasureEl.style.visibility = 'hidden';
+		titleMeasureEl.style.whiteSpace = 'nowrap';
+		titleMeasureEl.style.pointerEvents = 'none';
+		document.body.appendChild(titleMeasureEl);
+		return titleMeasureEl;
+	};
+
+	const disableTitleMarquee = () => {
+		trackTitle.classList.remove('track_title--marquee');
+		trackTitle.style.removeProperty('--marquee-translate');
+		trackTitle.style.removeProperty('--marquee-duration');
+		trackTitle.textContent = currentTitleValue;
+	};
+
+	const enableTitleMarquee = (textWidth, thresholdPx) => {
+		trackTitle.classList.add('track_title--marquee');
+		trackTitle.textContent = '';
+		const span = document.createElement('span');
+		span.className = 'track_title_text';
+		span.textContent = currentTitleValue;
+		trackTitle.appendChild(span);
+
+		const containerWidth = trackTitle.clientWidth || thresholdPx;
+		const gapPx = 24;
+		const distancePx = Math.max(0, textWidth - containerWidth + gapPx);
+		if (distancePx <= 1) {
+			disableTitleMarquee();
+			return;
+		}
+
+		// Speed: ~55px/s, clamped to keep it readable.
+		const durationSec = Math.max(8, Math.min(24, distancePx / 55));
+		trackTitle.style.setProperty('--marquee-translate', `${-distancePx}px`);
+		trackTitle.style.setProperty('--marquee-duration', `${durationSec.toFixed(2)}s`);
+	};
+
+	const updateTitleMarquee = () => {
+		marqueeUpdateRaf = null;
+		const trimmed = currentTitleValue?.trim();
+		const thresholdPx = Math.floor(window.innerWidth * 0.9);
+		if (!thresholdPx || !trimmed || trimmed === '...' || trimmed === '\u00A0') {
+			disableTitleMarquee();
+			return;
+		}
+
+		const measureEl = getTitleMeasureEl();
+		const cs = getComputedStyle(trackTitle);
+		measureEl.style.fontFamily = cs.fontFamily;
+		measureEl.style.fontSize = cs.fontSize;
+		measureEl.style.fontWeight = cs.fontWeight;
+		measureEl.style.letterSpacing = cs.letterSpacing;
+		measureEl.textContent = currentTitleValue;
+		const textWidth = measureEl.getBoundingClientRect().width;
+
+		if (textWidth <= thresholdPx) {
+			disableTitleMarquee();
+			return;
+		}
+
+		enableTitleMarquee(textWidth, thresholdPx);
+	};
+
+	const scheduleTitleMarqueeUpdate = () => {
+		if (marqueeUpdateRaf !== null) cancelAnimationFrame(marqueeUpdateRaf);
+		marqueeUpdateRaf = requestAnimationFrame(updateTitleMarquee);
+	};
+
 	const setTitleText = (title) => {
 		const trimmed = title?.trim();
-		trackTitle.textContent = trimmed || '\u00A0';
+		currentTitleValue = trimmed || '\u00A0';
+		scheduleTitleMarqueeUpdate();
 	};
 	const setArtistText = (artist) => {
 		const trimmed = artist?.trim();
@@ -393,4 +471,6 @@
 	buildSongList();
 	loadTrack(0);
 	updatePlayIcon();
+	window.addEventListener('resize', scheduleTitleMarqueeUpdate);
+	scheduleTitleMarqueeUpdate();
 })();

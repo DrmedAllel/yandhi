@@ -82,11 +82,34 @@ main {
     font-size: 0.95rem;
     font-weight: 500;
     user-select: none;
-    max-width: 4220px;
+    max-width: 90vw;
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.track_title .track_title_text {
+    display: inline-block;
+    white-space: nowrap;
+    will-change: transform;
+}
+
+.track_title.track_title--marquee {
+    text-overflow: clip;
+}
+
+.track_title.track_title--marquee .track_title_text {
+    animation: track-title-marquee var(--marquee-duration, 12s) linear infinite;
+}
+
+@keyframes track-title-marquee {
+    0%, 10% {
+        transform: translateX(0);
+    }
+    90%, 100% {
+        transform: translateX(var(--marquee-translate, 0px));
+    }
 }
 
 .track_artist {
@@ -124,6 +147,7 @@ main {
 
 .songlist_container {
     max-height: 400px;
+    height: 400px;
     overflow-y: auto;
     width: 100%;
 }
