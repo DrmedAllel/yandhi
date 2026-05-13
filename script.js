@@ -36,6 +36,87 @@
 	let shuffleOrder = [];
 	let shufflePos = 0;
 
+	// Persistence
+	const LAST_TRACK_KEY = 'yandhi_last_track_v1';
+	const LAST_TIME_KEY = 'yandhi_last_time_v1';
+	const SHUFFLE_ENABLED_KEY = 'yandhi_shuffle_enabled_v1';
+	const SHUFFLE_ORDER_KEY = 'yandhi_shuffle_order_v1';
+	const SHUFFLE_POS_KEY = 'yandhi_shuffle_pos_v1';
+
+	const readStorageString = (key) => {
+		try {
+			const v = localStorage.getItem(key);
+			return typeof v === 'string' ? v : null;
+		} catch {
+			return null;
+		}
+	};
+	const writeStorageString = (key, value) => {
+		try {
+			localStorage.setItem(key, value);
+		} catch {
+			// Ignore storage errors.
+		}
+	};
+	const readStorageNumber = (key) => {
+		const raw = readStorageString(key);
+		const n = Number(raw);
+		return Number.isFinite(n) ? n : null;
+	};
+	const readStorageBool = (key) => readStorageString(key) === '1';
+
+	const writeLastTrack = (filename) => {
+		if (!filename) return;
+		writeStorageString(LAST_TRACK_KEY, filename);
+	};
+	const writeLastTime = (seconds) => {
+		if (!Number.isFinite(seconds) || seconds < 0) return;
+		writeStorageString(LAST_TIME_KEY, String(seconds));
+	};
+	const writeShuffleEnabled = (enabled) => writeStorageString(SHUFFLE_ENABLED_KEY, enabled ? '1' : '0');
+	const writeShuffleOrder = (order) => {
+		try {
+			writeStorageString(SHUFFLE_ORDER_KEY, JSON.stringify(order));
+		} catch {
+			// Ignore.
+		}
+	};
+	const writeShufflePos = (pos) => writeStorageString(SHUFFLE_POS_KEY, String(pos));
+
+	const persistPlaybackSnapshot = () => {
+		try {
+			writeLastTrack(tracks[currentTrackIndex]);
+			writeLastTime(audio.currentTime);
+			writeShuffleEnabled(shuffleEnabled);
+			writeShuffleOrder(shuffleOrder);
+			writeShufflePos(shufflePos);
+		} catch {
+			// Ignore.
+		}
+	};
+
+	const readShuffleOrder = () => {
+		try {
+			const raw = readStorageString(SHUFFLE_ORDER_KEY);
+			if (!raw) return null;
+			const parsed = JSON.parse(raw);
+			return Array.isArray(parsed) ? parsed : null;
+		} catch {
+			return null;
+		}
+	};
+
+	const isValidShuffleOrder = (order) => {
+		if (!Array.isArray(order) || order.length !== tracks.length) return false;
+		const seen = new Set();
+		for (const idx of order) {
+			if (!Number.isInteger(idx) || idx < 0 || idx >= tracks.length) return false;
+			if (seen.has(idx)) return false;
+			seen.add(idx);
+		}
+		return seen.size === tracks.length;
+	};
+
 	// Tunables
 	const maxOmegaDegPerSec = 5200; // max speed
 	const accelTimeSec = 3.5;      // time to reach max speed
@@ -141,17 +222,48 @@
 		shuffleArrayInPlace(rest);
 		shuffleOrder = [startIndex, ...rest];
 		shufflePos = 0;
+		writeShuffleOrder(shuffleOrder);
+		writeShufflePos(shufflePos);
 	};
 
 	const setShuffleEnabled = (enabled) => {
 		shuffleEnabled = enabled;
 		shuffleBtn?.setAttribute('aria-pressed', String(shuffleEnabled));
+		writeShuffleEnabled(shuffleEnabled);
 		if (shuffleEnabled) {
 			rebuildShuffleOrder(currentTrackIndex);
 		} else {
 			shuffleOrder = [];
 			shufflePos = 0;
+			writeShuffleOrder(shuffleOrder);
+			writeShufflePos(shufflePos);
 		}
+	};
+
+	const initShuffleFromStorage = () => {
+		const enabled = readStorageBool(SHUFFLE_ENABLED_KEY);
+		shuffleEnabled = enabled;
+		shuffleBtn?.setAttribute('aria-pressed', String(shuffleEnabled));
+		if (!enabled) {
+			shuffleOrder = [];
+			shufflePos = 0;
+			return;
+		}
+
+		const storedOrder = readShuffleOrder();
+		const storedPos = readStorageNumber(SHUFFLE_POS_KEY);
+		if (isValidShuffleOrder(storedOrder)) {
+			shuffleOrder = storedOrder;
+			shufflePos = Number.isInteger(storedPos) ? Math.max(0, Math.min(storedPos, shuffleOrder.length - 1)) : 0;
+			// Keep pos consistent with current track.
+			const actualPos = shuffleOrder.indexOf(currentTrackIndex);
+			if (actualPos >= 0) shufflePos = actualPos;
+		} else {
+			rebuildShuffleOrder(currentTrackIndex);
+		}
+		writeShuffleEnabled(true);
+		writeShuffleOrder(shuffleOrder);
+		writeShufflePos(shufflePos);
 	};
 
 	let titleRequestId = 0;
@@ -501,12 +613,14 @@
 		setActiveSongListItem(currentTrackIndex);
 	};
 
-	const loadTrack = (index, { reseedShuffle = false } = {}) => {
+	const loadTrack = (index, { reseedShuffle = false, preserveTime = false } = {}) => {
 		currentTrackIndex = (index + tracks.length) % tracks.length;
 		if (shuffleEnabled && reseedShuffle) {
 			rebuildShuffleOrder(currentTrackIndex);
 		}
 		const file = tracks[currentTrackIndex];
+		writeLastTrack(file);
+		if (!preserveTime) writeLastTime(0);
 		const url = encodeURI(`music/${file}`);
 		audio.src = url;
 		audio.load();
@@ -596,6 +710,7 @@
 				rebuildShuffleOrder(currentTrackIndex);
 			}
 			shufflePos = Math.min(shufflePos + 1, shuffleOrder.length - 1);
+			writeShufflePos(shufflePos);
 			loadTrack(shuffleOrder[shufflePos]);
 			if (isPlaying) void playAudio();
 			return;
@@ -610,6 +725,7 @@
 				rebuildShuffleOrder(currentTrackIndex);
 			}
 			shufflePos = Math.max(shufflePos - 1, 0);
+			writeShufflePos(shufflePos);
 			loadTrack(shuffleOrder[shufflePos]);
 			if (isPlaying) void playAudio();
 			return;
@@ -629,18 +745,31 @@
 	});
 
 	audio.addEventListener('loadedmetadata', updateTimeUI);
-	audio.addEventListener('timeupdate', updateTimeUI);
+	let lastTimePersistTs = 0;
+	audio.addEventListener('timeupdate', () => {
+		updateTimeUI();
+		const now = Date.now();
+		if (now - lastTimePersistTs < 2000) return;
+		lastTimePersistTs = now;
+		writeLastTime(audio.currentTime);
+	});
+	audio.addEventListener('seeked', () => {
+		writeLastTime(audio.currentTime);
+		updateTimeUI();
+	});
 	audio.addEventListener('play', () => syncFromAudioState(true));
 	audio.addEventListener('playing', () => syncFromAudioState(true));
 	audio.addEventListener('pause', () => {
 		// When a track ends, browsers may also emit 'pause'.
 		if (audio.ended) return;
 		syncFromAudioState(false);
+		writeLastTime(audio.currentTime);
 	});
 	audio.addEventListener('ended', () => {
 		if (!tracks.length) return;
 		// Keep the player in "playing" state across track boundaries.
 		syncFromAudioState(true);
+		writeLastTime(0);
 		nextTrack();
 	});
 
@@ -656,12 +785,37 @@
 	}
 
 	buildSongList();
-	loadTrack(0, { reseedShuffle: true });
+	const restoredFile = readStorageString(LAST_TRACK_KEY);
+	const restoredIndex = restoredFile ? tracks.indexOf(restoredFile) : -1;
+	const initialIndex = Math.max(0, restoredIndex);
+	loadTrack(initialIndex, { reseedShuffle: false, preserveTime: true });
+	initShuffleFromStorage();
+	const restoredTime = readStorageNumber(LAST_TIME_KEY);
+	if (Number.isFinite(restoredTime) && restoredTime > 0) {
+		const applyTime = () => {
+			try {
+				audio.currentTime = Math.max(0, restoredTime);
+				updateTimeUI();
+			} catch {
+				// Ignore.
+			}
+		};
+		if (Number.isFinite(audio.duration) && audio.duration > 0) {
+			applyTime();
+		} else {
+			audio.addEventListener('loadedmetadata', applyTime, { once: true });
+		}
+	}
 	updatePlayIcon();
 	updateMediaSessionPlaybackState(false);
 	updateLikeButtonUI();
 	updateSongListLikeIndicators();
 	initMediaCoverArt();
+	// Persist state when the page is backgrounded or closed.
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'hidden') persistPlaybackSnapshot();
+	});
+	window.addEventListener('beforeunload', persistPlaybackSnapshot);
 	window.addEventListener('resize', scheduleTitleMarqueeUpdate);
 	scheduleTitleMarqueeUpdate();
 })();
