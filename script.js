@@ -17,6 +17,7 @@
 	if (!cd || !cdCaseButton || !audio || !trackTitle || !trackArtist || !timeDisplay || !songList || !prevBtn || !playPauseBtn || !nextBtn || !playPauseIcon) return;
 
 	const tracks = [
+        'Hurricane_V22.mp3',
 		'All_Dreams_Real_V5.mp3',
 		'Amazing.mp3',
 		'Brothers_V10.mp3',
@@ -28,7 +29,6 @@
 		'Ever_Bryan.mp3',
 		'Garden_V13.mp3',
 		'Got_A_Problem_V2.mp3',
-		'Hurricane_V22.mp3',
 		'In_The_Morning_V1.mp3',
 		'Jam_14_V6.mp3',
 		'Last_Name_V9.mp3',
