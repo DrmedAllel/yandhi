@@ -796,6 +796,7 @@
 			try {
 				audio.currentTime = Math.max(0, restoredTime);
 				updateTimeUI();
+				writeLastTime(audio.currentTime);
 			} catch {
 				// Ignore.
 			}
@@ -815,6 +816,7 @@
 	document.addEventListener('visibilitychange', () => {
 		if (document.visibilityState === 'hidden') persistPlaybackSnapshot();
 	});
+	window.addEventListener('pagehide', persistPlaybackSnapshot);
 	window.addEventListener('beforeunload', persistPlaybackSnapshot);
 	window.addEventListener('resize', scheduleTitleMarqueeUpdate);
 	scheduleTitleMarqueeUpdate();
