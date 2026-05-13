@@ -244,13 +244,75 @@
 		trackArtist.textContent = trimmed || '\u00A0';
 	};
 
+	const MEDIA_COVER_ART_SRC = 'img/yandhi_cover_art.png';
+	let mediaCoverArtResolvedSrc = MEDIA_COVER_ART_SRC;
+
+	const getMediaCoverArtwork = () => {
+		const src = mediaCoverArtResolvedSrc;
+		// Media Session artwork only supports http(s)/blob/data URLs.
+		if (
+			location.protocol === 'file:' &&
+			typeof src === 'string' &&
+			!(src.startsWith('blob:') || src.startsWith('data:') || src.startsWith('http://') || src.startsWith('https://'))
+		) {
+			return [];
+		}
+		return [
+			{ src, sizes: '96x96', type: 'image/png' },
+			{ src, sizes: '128x128', type: 'image/png' },
+			{ src, sizes: '192x192', type: 'image/png' },
+			{ src, sizes: '256x256', type: 'image/png' },
+			{ src, sizes: '384x384', type: 'image/png' },
+			{ src, sizes: '512x512', type: 'image/png' },
+		];
+	};
+
 	const updateMediaSessionMetadata = (title, artist) => {
 		if (!('mediaSession' in navigator)) return;
 		try {
 			navigator.mediaSession.metadata = new MediaMetadata({
 				title: title || '',
 				artist: artist || '',
+				album: 'Yandhi',
+				artwork: getMediaCoverArtwork(),
 			});
+		} catch {
+			// Ignore unsupported contexts.
+		}
+	};
+
+	// MediaSession artwork does not allow file:// URLs; resolve to a blob: URL when needed.
+	const initMediaCoverArt = () => {
+		if (!('mediaSession' in navigator)) return;
+		if (location.protocol !== 'file:') return;
+		if (!('fetch' in globalThis) || !('URL' in globalThis)) return;
+
+		(async () => {
+			try {
+				const resp = await fetch(MEDIA_COVER_ART_SRC);
+				if (!resp.ok) return;
+				const blob = await resp.blob();
+				const url = URL.createObjectURL(blob);
+				mediaCoverArtResolvedSrc = url;
+				updateMediaSessionMetadata(currentTitleValue?.trim() || '', trackArtist.textContent?.trim() || '');
+
+				window.addEventListener('beforeunload', () => {
+					try {
+						URL.revokeObjectURL(url);
+					} catch {
+						// Ignore.
+					}
+				});
+			} catch {
+				// Ignore; artwork will remain unset/relative.
+			}
+		})();
+	};
+
+	const updateMediaSessionPlaybackState = (playing) => {
+		if (!('mediaSession' in navigator)) return;
+		try {
+			navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
 		} catch {
 			// Ignore unsupported contexts.
 		}
@@ -468,6 +530,7 @@
 		targetOmegaDegPerSec = isPlaying ? maxOmegaDegPerSec : 0;
 		cdCaseButton.setAttribute('aria-pressed', String(isPlaying));
 		updatePlayIcon();
+		updateMediaSessionPlaybackState(isPlaying);
 
 		if (rafId === null) {
 			lastTs = null;
@@ -480,6 +543,7 @@
 		targetOmegaDegPerSec = isPlaying ? maxOmegaDegPerSec : 0;
 		cdCaseButton.setAttribute('aria-pressed', String(isPlaying));
 		updatePlayIcon();
+		updateMediaSessionPlaybackState(isPlaying);
 
 		if (isPlaying) {
 			void playAudio();
@@ -594,8 +658,10 @@
 	buildSongList();
 	loadTrack(0, { reseedShuffle: true });
 	updatePlayIcon();
+	updateMediaSessionPlaybackState(false);
 	updateLikeButtonUI();
 	updateSongListLikeIndicators();
+	initMediaCoverArt();
 	window.addEventListener('resize', scheduleTitleMarqueeUpdate);
 	scheduleTitleMarqueeUpdate();
 })();
