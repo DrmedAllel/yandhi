@@ -7,6 +7,7 @@
 	const timeDisplay = document.getElementById('timeDisplay');
 	const songList = document.getElementById('songList');
 	const prevBtn = document.getElementById('prevBtn');
+	const shuffleBtn = document.getElementById('shuffleBtn');
 	const playPauseBtn = document.getElementById('playPauseBtn');
 	const nextBtn = document.getElementById('nextBtn');
 	const playPauseIcon = document.getElementById('playPauseIcon');
@@ -31,6 +32,9 @@
 	];
 
 	let currentTrackIndex = 0;
+	let shuffleEnabled = false;
+	let shuffleOrder = [];
+	let shufflePos = 0;
 
 	// Tunables
 	const maxOmegaDegPerSec = 5200; // max speed
@@ -120,6 +124,34 @@
 		writeLikedTracks(likedTracks);
 		updateLikeButtonUI();
 		updateSongListLikeIndicators();
+	};
+
+	const shuffleArrayInPlace = (arr) => {
+		for (let i = arr.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[arr[i], arr[j]] = [arr[j], arr[i]];
+		}
+		return arr;
+	};
+
+	const rebuildShuffleOrder = (startIndex) => {
+		const rest = tracks
+			.map((_, idx) => idx)
+			.filter((idx) => idx !== startIndex);
+		shuffleArrayInPlace(rest);
+		shuffleOrder = [startIndex, ...rest];
+		shufflePos = 0;
+	};
+
+	const setShuffleEnabled = (enabled) => {
+		shuffleEnabled = enabled;
+		shuffleBtn?.setAttribute('aria-pressed', String(shuffleEnabled));
+		if (shuffleEnabled) {
+			rebuildShuffleOrder(currentTrackIndex);
+		} else {
+			shuffleOrder = [];
+			shufflePos = 0;
+		}
 	};
 
 	let titleRequestId = 0;
@@ -376,7 +408,7 @@
 			btn.appendChild(title);
 			btn.appendChild(meta);
 			btn.addEventListener('click', () => {
-				loadTrack(index);
+				loadTrack(index, { reseedShuffle: true });
 				setActiveSongListItem(index);
 				setPlaying(true);
 			});
@@ -407,8 +439,11 @@
 		setActiveSongListItem(currentTrackIndex);
 	};
 
-	const loadTrack = (index) => {
+	const loadTrack = (index, { reseedShuffle = false } = {}) => {
 		currentTrackIndex = (index + tracks.length) % tracks.length;
+		if (shuffleEnabled && reseedShuffle) {
+			rebuildShuffleOrder(currentTrackIndex);
+		}
 		const file = tracks[currentTrackIndex];
 		const url = encodeURI(`music/${file}`);
 		audio.src = url;
@@ -489,11 +524,32 @@
 	};
 
 	const nextTrack = () => {
+		if (shuffleEnabled && tracks.length) {
+			if (!shuffleOrder.length || shuffleOrder[shufflePos] !== currentTrackIndex) {
+				rebuildShuffleOrder(currentTrackIndex);
+			}
+			if (shufflePos >= shuffleOrder.length - 1) {
+				rebuildShuffleOrder(currentTrackIndex);
+			}
+			shufflePos = Math.min(shufflePos + 1, shuffleOrder.length - 1);
+			loadTrack(shuffleOrder[shufflePos]);
+			if (isPlaying) void playAudio();
+			return;
+		}
 		loadTrack(currentTrackIndex + 1);
 		if (isPlaying) void playAudio();
 	};
 
 	const prevTrack = () => {
+		if (shuffleEnabled && tracks.length) {
+			if (!shuffleOrder.length || shuffleOrder[shufflePos] !== currentTrackIndex) {
+				rebuildShuffleOrder(currentTrackIndex);
+			}
+			shufflePos = Math.max(shufflePos - 1, 0);
+			loadTrack(shuffleOrder[shufflePos]);
+			if (isPlaying) void playAudio();
+			return;
+		}
 		loadTrack(currentTrackIndex - 1);
 		if (isPlaying) void playAudio();
 	};
@@ -503,6 +559,10 @@
 	prevBtn.addEventListener('click', () => prevTrack());
 	nextBtn.addEventListener('click', () => nextTrack());
 	likeBtn?.addEventListener('click', () => toggleLikeCurrentTrack());
+	shuffleBtn?.addEventListener('click', () => {
+		const next = !shuffleEnabled;
+		setShuffleEnabled(next);
+	});
 
 	audio.addEventListener('loadedmetadata', updateTimeUI);
 	audio.addEventListener('timeupdate', updateTimeUI);
@@ -532,7 +592,7 @@
 	}
 
 	buildSongList();
-	loadTrack(0);
+	loadTrack(0, { reseedShuffle: true });
 	updatePlayIcon();
 	updateLikeButtonUI();
 	updateSongListLikeIndicators();

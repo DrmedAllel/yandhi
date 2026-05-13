@@ -137,6 +137,29 @@ main {
     color: #888;
 }
 
+.control_btn--shuffle[aria-pressed="true"] {
+    color: #888;
+}
+
+.control_btn--shuffle {
+    display: inline-flex;
+    align-items: center;
+}
+
+.control_btn--shuffle::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    margin-right: 6px;
+    opacity: 0;
+}
+
+.control_btn--shuffle[aria-pressed="true"]::before {
+    opacity: 1;
+}
+
 .songlist {
     width: 660px;
     max-width: 90vw;
