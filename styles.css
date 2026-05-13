@@ -202,7 +202,7 @@ main {
 
 .songlist_row--liked .songlist_like_indicator {
     opacity: 1;
-    color: #1291FE;
+    color: #888;
 }
 
 .songlist_row:hover {
