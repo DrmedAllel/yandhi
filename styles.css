@@ -133,6 +133,10 @@ main {
     gap: 14px;
 }
 
+.control_btn--like[aria-pressed="true"] {
+    color: #888;
+}
+
 .songlist {
     width: 660px;
     max-width: 90vw;
@@ -164,6 +168,18 @@ main {
     align-items: center;
     gap: 12px;
     padding: 0.5rem;
+}
+
+.songlist_like_indicator {
+    flex: 0 0 auto;
+    width: 1.1rem;
+    text-align: center;
+    opacity: 0;
+}
+
+.songlist_row--liked .songlist_like_indicator {
+    opacity: 1;
+    color: #1291FE;
 }
 
 .songlist_row:hover {

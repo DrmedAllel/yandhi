@@ -10,6 +10,8 @@
 	const playPauseBtn = document.getElementById('playPauseBtn');
 	const nextBtn = document.getElementById('nextBtn');
 	const playPauseIcon = document.getElementById('playPauseIcon');
+	const likeBtn = document.getElementById('likeBtn');
+	const likeIcon = document.getElementById('likeIcon');
 
 	if (!cd || !cdCaseButton || !audio || !trackTitle || !trackArtist || !timeDisplay || !songList || !prevBtn || !playPauseBtn || !nextBtn || !playPauseIcon) return;
 
@@ -67,6 +69,57 @@
 	const formatTitle = (filename) => {
 		const withoutExt = filename.replace(/\.mp3$/i, '');
 		return withoutExt.replaceAll('_', ' ').trim();
+	};
+
+	const LIKED_TRACKS_KEY = 'yandhi_liked_tracks_v1';
+	const readLikedTracks = () => {
+		try {
+			const raw = localStorage.getItem(LIKED_TRACKS_KEY);
+			if (!raw) return new Set();
+			const arr = JSON.parse(raw);
+			if (!Array.isArray(arr)) return new Set();
+			return new Set(arr.filter((x) => typeof x === 'string' && x.length));
+		} catch {
+			return new Set();
+		}
+	};
+	const writeLikedTracks = (set) => {
+		try {
+			localStorage.setItem(LIKED_TRACKS_KEY, JSON.stringify(Array.from(set)));
+		} catch {
+			// Ignore storage errors (private mode/quota).
+		}
+	};
+
+	let likedTracks = readLikedTracks();
+	const isLiked = (filename) => likedTracks.has(filename);
+	const updateLikeButtonUI = () => {
+		if (!likeBtn || !likeIcon) return;
+		const file = tracks[currentTrackIndex];
+		const liked = !!file && isLiked(file);
+		likeBtn.setAttribute('aria-pressed', String(liked));
+		likeBtn.setAttribute('aria-label', liked ? 'Song entliken' : 'Song liken');
+		likeIcon.className = liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart';
+	};
+	const updateSongListLikeIndicators = () => {
+		const rows = songList.querySelectorAll('.songlist_row[data-file]');
+		rows.forEach((row) => {
+			const file = row.dataset.file || '';
+			row.classList.toggle('songlist_row--liked', isLiked(file));
+		});
+	};
+	const toggleLikeCurrentTrack = () => {
+		const file = tracks[currentTrackIndex];
+		if (!file) return;
+		likedTracks = new Set(likedTracks);
+		if (likedTracks.has(file)) {
+			likedTracks.delete(file);
+		} else {
+			likedTracks.add(file);
+		}
+		writeLikedTracks(likedTracks);
+		updateLikeButtonUI();
+		updateSongListLikeIndicators();
 	};
 
 	let titleRequestId = 0;
@@ -297,6 +350,12 @@
 			const li = document.createElement('li');
 			const row = document.createElement('div');
 			row.className = 'songlist_row';
+			row.dataset.file = file;
+			row.classList.toggle('songlist_row--liked', isLiked(file));
+
+			const likeIndicator = document.createElement('i');
+			likeIndicator.className = 'fa-solid fa-heart songlist_like_indicator';
+			likeIndicator.setAttribute('aria-hidden', 'true');
 
 			const btn = document.createElement('button');
 			btn.type = 'button';
@@ -337,6 +396,7 @@
 			downloadIcon.setAttribute('aria-hidden', 'true');
 			downloadLink.appendChild(downloadIcon);
 
+			row.appendChild(likeIndicator);
 			row.appendChild(btn);
 			row.appendChild(downloadLink);
 			li.appendChild(row);
@@ -355,6 +415,8 @@
 		audio.load();
 		updateTitleFromMetadata(url, file);
 		setActiveSongListItem(currentTrackIndex);
+		updateLikeButtonUI();
+		updateSongListLikeIndicators();
 		updateTimeUI();
 	};
 
@@ -440,6 +502,7 @@
 	playPauseBtn.addEventListener('click', toggle);
 	prevBtn.addEventListener('click', () => prevTrack());
 	nextBtn.addEventListener('click', () => nextTrack());
+	likeBtn?.addEventListener('click', () => toggleLikeCurrentTrack());
 
 	audio.addEventListener('loadedmetadata', updateTimeUI);
 	audio.addEventListener('timeupdate', updateTimeUI);
@@ -471,6 +534,8 @@
 	buildSongList();
 	loadTrack(0);
 	updatePlayIcon();
+	updateLikeButtonUI();
+	updateSongListLikeIndicators();
 	window.addEventListener('resize', scheduleTitleMarqueeUpdate);
 	scheduleTitleMarqueeUpdate();
 })();
